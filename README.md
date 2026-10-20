@@ -29,6 +29,12 @@ The header shows the page indicator, the time (NTP) and a status dot: **green** 
 - Solar Assistant with the MQTT broker enabled (tested with one battery and two inverters, using the aggregated `total` topics)
 - Optional: 3D-printed enclosure (see below)
 
+#### Where to buy
+
+The display used for this project is available on Amazon: **[ESP32-2432S028 Cheap Yellow Display](https://link.amazon/B07kMcnrc)**. Buying through this link costs you nothing extra and helps support the project.
+
+<sub>This is an affiliate link: as an Amazon Associate I earn from qualifying purchases.</sub>
+
 ### MQTT topics
 
 The firmware subscribes to:
@@ -140,6 +146,12 @@ Nell'intestazione ci sono l'indicatore di pagina, l'ora (via NTP) e un pallino d
 - Cavo USB e alimentatore 5 V
 - Solar Assistant con il broker MQTT attivo (provato con una batteria e due inverter, usando i topic aggregati `total`)
 - Opzionale: scatola stampata in 3D (vedi sotto)
+
+#### Dove acquistarlo
+
+Il display usato in questo progetto si trova su Amazon: **[ESP32-2432S028 Cheap Yellow Display](https://link.amazon/B07kMcnrc)**. Acquistandolo da questo link non paghi nulla in più e sostieni il progetto.
+
+<sub>Link di affiliazione: in qualità di Affiliato Amazon ricevo un guadagno dagli acquisti idonei.</sub>
 
 ### Topic MQTT
 
