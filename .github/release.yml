@@ -1,0 +1,112 @@
+name: Release
+
+# Crea una release quando si fa il push di un tag "v*" (es. v1.0.0),
+# oppure a mano dalla scheda Actions (solo build, senza release).
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            ~/.cache/pip
+          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+
+      - name: Install PlatformIO
+        run: pip install --upgrade platformio
+
+      # secrets.h è escluso da git: in CI si usa il file di esempio
+      # (il firmware pubblicato NON contiene credenziali reali)
+      - name: Prepare secrets.h
+        run: cp include/secrets.example.h include/secrets.h
+
+      - name: Build firmware
+        run: pio run -e cyd
+
+      - name: Version name
+        id: ver
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            echo "name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=dev-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Package firmware and enclosure
+        env:
+          VER: ${{ steps.ver.outputs.name }}
+        run: |
+          set -euo pipefail
+          B=.pio/build/cyd
+          mkdir -p dist
+          BOOT_APP0=$(find ~/.platformio/packages/framework-arduinoespressif32 -name boot_app0.bin | head -n1)
+
+          # Immagine unica da scrivere all'indirizzo 0x0 (esptool o web flasher)
+          pio pkg exec -p tool-esptoolpy -- esptool.py --chip esp32 merge_bin \
+            -o "dist/cyd-solar-monitor-${VER}-full.bin" \
+            --flash_mode dio --flash_freq 40m --flash_size 4MB \
+            0x1000  "$B/bootloader.bin" \
+            0x8000  "$B/partitions.bin" \
+            0xe000  "$BOOT_APP0" \
+            0x10000 "$B/firmware.bin"
+
+          # Solo applicazione (da scrivere a 0x10000, per aggiornamenti)
+          cp "$B/firmware.bin" "dist/cyd-solar-monitor-${VER}-app.bin"
+
+          # Scatola: sorgente, STL, anteprime e guida
+          (cd enclosure && zip -r "../dist/cyd-solar-monitor-${VER}-enclosure.zip" \
+            cyd_enclosure.scad *.stl README.md preview)
+
+          (cd dist && sha256sum * > SHA256SUMS.txt)
+          ls -l dist
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cyd-solar-monitor-${{ steps.ver.outputs.name }}
+          path: dist/*
+
+      - name: Create GitHub release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          body: |
+            ## Files
+
+            | File | Content |
+            |---|---|
+            | `*-full.bin` | Complete image (bootloader + partitions + app), flash at `0x0` |
+            | `*-app.bin` | Application only, flash at `0x10000` |
+            | `*-enclosure.zip` | 3D-printable enclosure: OpenSCAD source, STL files, previews |
+            | `SHA256SUMS.txt` | Checksums |
+
+            ### Flashing
+
+            ```
+            esptool.py --chip esp32 --baud 115200 write_flash 0x0 cyd-solar-monitor-<version>-full.bin
+            ```
+
+            > The prebuilt firmware contains the placeholder Wi-Fi/MQTT settings from `include/secrets.example.h`.
+            > To use it with your own network, set your credentials in `include/secrets.h` and build with PlatformIO.
