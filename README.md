@@ -2,6 +2,8 @@
 
 **[English](#english) · [Italiano](#italiano)**
 
+[![Donate with PayPal](https://img.shields.io/badge/Donate-PayPal-00457C?logo=paypal&logoColor=white)](https://www.paypal.com/paypalme/AlessandroLanni79)
+
 ![Screen pages](docs/images/screens.png)
 
 ---
@@ -16,7 +18,7 @@ A small wall or desk display for **[Solar Assistant](https://solar-assistant.io/
 | Live | Today & Weather | Battery & PV |
 |:---:|:---:|:---:|
 | ![Live](docs/images/page1.png) | ![Today and weather](docs/images/page2.png) | ![Battery and PV](docs/images/page3.png) |
-| PV, house load, grid, battery power + state of charge | Daily energy (kWh), self-sufficiency, self-consumption, weather, forecast vs actual PV | PV gauge (0–7.5 kW) + state-of-charge bar |
+| PV, house load, grid, battery power + state of charge, voltage | Daily energy (kWh), self-sufficiency, self-consumption, weather, forecast vs actual PV | PV gauge (0–7.5 kW) + state of charge, voltage |
 
 > Screens are rendered mockups with sample values; the on-device fonts look slightly different. The UI text is in Italian.
 
@@ -43,9 +45,10 @@ The firmware subscribes to:
 |---|---|
 | `solar_assistant/total/+/state` | `pv_power`, `load_power`, `grid_power`, `battery_power`, `battery_state_of_charge`, `battery_temperature`, `grid_voltage`, `grid_frequency`, `load_percentage`, daily energies (`pv_energy`, `load_energy`, `grid_energy_in/out`, `battery_energy_in/out`) |
 | `solar_assistant/weather/+/state` | `cloud_cover`, `outside_temperature`, `pv_energy_remaining_today`, `pv_power_predicted`, `weather_code` |
+| `solar_assistant/battery_1/voltage/state` | battery voltage (configurable) |
 | `solar_assistant/status` | online/offline |
 
-Because the firmware only reads the `total` topics, it works with any number of inverters and batteries.
+Apart from the battery voltage, the firmware only reads the `total` topics, so it works with any number of inverters and batteries.
 
 ### Build and flash (PlatformIO)
 
@@ -67,7 +70,10 @@ All libraries (TFT_eSPI, PubSubClient, XPT2046_Touchscreen) are fetched automati
 |---|---|---|
 | `BATT_POSITIVE_IS_CHARGE` | `true` | Flip if charge/discharge is shown the wrong way round |
 | `GRID_POSITIVE_IS_IMPORT` | `true` | Flip if import/export is shown the wrong way round |
-| `AUTO_PAGE_MS` | `0` | Automatic page rotation interval in ms (`0` = touch only) |
+| `AUTO_PAGE_MS` | `30000` | How long each page is shown during automatic rotation, in ms (`0` = touch only) |
+| `IDLE_MS` | `30000` | Automatic rotation starts after this long without touches |
+| `BATT_V_KEY` | `battery_1/voltage` | MQTT topic for the battery voltage (check the exact name on your system) |
+| `LED_ENABLED` | `true` | Rear RGB LED "breathing": green while charging, red while discharging |
 | `STALE_MS` | `60000` | Data older than this turns the status dot orange |
 | `TZ_INFO` | Europe/Rome | POSIX time zone for the clock |
 | `TOUCH_MIN_Z` | `600` | Minimum touch pressure |
@@ -114,6 +120,12 @@ The board outline and display window come from the manufacturer's drawings. The 
 └── enclosure/                OpenSCAD source, STLs, previews, assembly guide
 ```
 
+### Support the project
+
+If this project is useful to you, you can buy the display through the [affiliate link](#where-to-buy) above or make a small donation:
+
+[![Donate with PayPal](https://img.shields.io/badge/Donate-PayPal-00457C?logo=paypal&logoColor=white)](https://www.paypal.com/paypalme/AlessandroLanni79)
+
 ### Credits
 
 - [Solar Assistant](https://solar-assistant.io/) for the MQTT data
@@ -134,7 +146,7 @@ Un piccolo display da parete o da tavolo per **[Solar Assistant](https://solar-a
 | Live | Oggi e meteo | Batteria e FV |
 |:---:|:---:|:---:|
 | ![Live](docs/images/page1.png) | ![Oggi e meteo](docs/images/page2.png) | ![Batteria e FV](docs/images/page3.png) |
-| Potenza di FV, casa, rete e batteria + stato di carica | Energia del giorno (kWh), autosufficienza, autoconsumo, meteo, FV previsto e reale | Gauge del FV (0–7,5 kW) + barra dello stato di carica |
+| Potenza di FV, casa, rete e batteria + stato di carica e tensione | Energia del giorno (kWh), autosufficienza, autoconsumo, meteo, FV previsto e reale | Gauge del FV (0–7,5 kW) + stato di carica e tensione |
 
 > Le schermate sono simulazioni con valori di esempio; sul display i font sono un po' diversi.
 
@@ -161,9 +173,10 @@ Il firmware si iscrive a:
 |---|---|
 | `solar_assistant/total/+/state` | `pv_power`, `load_power`, `grid_power`, `battery_power`, `battery_state_of_charge`, `battery_temperature`, `grid_voltage`, `grid_frequency`, `load_percentage`, energie giornaliere (`pv_energy`, `load_energy`, `grid_energy_in/out`, `battery_energy_in/out`) |
 | `solar_assistant/weather/+/state` | `cloud_cover`, `outside_temperature`, `pv_energy_remaining_today`, `pv_power_predicted`, `weather_code` |
+| `solar_assistant/battery_1/voltage/state` | tensione batteria (configurabile) |
 | `solar_assistant/status` | online/offline |
 
-Dato che il firmware legge solo i topic `total`, funziona con qualsiasi numero di inverter e batterie.
+A parte la tensione della batteria, il firmware legge solo i topic `total`, quindi funziona con qualsiasi numero di inverter e batterie.
 
 ### Compilazione e caricamento (PlatformIO)
 
@@ -185,7 +198,10 @@ Le librerie (TFT_eSPI, PubSubClient, XPT2046_Touchscreen) vengono scaricate in a
 |---|---|---|
 | `BATT_POSITIVE_IS_CHARGE` | `true` | Inverti se carica e scarica risultano al contrario |
 | `GRID_POSITIVE_IS_IMPORT` | `true` | Inverti se prelievo e immissione risultano al contrario |
-| `AUTO_PAGE_MS` | `0` | Intervallo di cambio pagina automatico in ms (`0` = solo touch) |
+| `AUTO_PAGE_MS` | `30000` | Quanto resta ogni pagina nello scorrimento automatico, in ms (`0` = solo touch) |
+| `IDLE_MS` | `30000` | Lo scorrimento automatico parte dopo questo tempo senza tocchi |
+| `BATT_V_KEY` | `battery_1/voltage` | Topic MQTT della tensione batteria (verifica il nome esatto sul tuo impianto) |
+| `LED_ENABLED` | `true` | "Respiro" del LED RGB sul retro: verde in carica, rosso in scarica |
 | `STALE_MS` | `60000` | Oltre questo tempo senza dati il pallino diventa arancione |
 | `TZ_INFO` | Europe/Rome | Fuso orario POSIX per l'orologio |
 | `TOUCH_MIN_Z` | `600` | Pressione minima per un tocco valido |
@@ -226,6 +242,12 @@ Il profilo della scheda e la finestra del display vengono dai disegni del produt
 ├── docs/images/              simulazioni delle schermate
 └── enclosure/                sorgente OpenSCAD, STL, anteprime, guida di montaggio
 ```
+
+### Sostieni il progetto
+
+Se il progetto ti è utile, puoi acquistare il display dal [link di affiliazione](#dove-acquistarlo) qui sopra oppure fare una piccola donazione:
+
+[![Dona con PayPal](https://img.shields.io/badge/Dona-PayPal-00457C?logo=paypal&logoColor=white)](https://www.paypal.com/paypalme/AlessandroLanni79)
 
 ### Riconoscimenti
 

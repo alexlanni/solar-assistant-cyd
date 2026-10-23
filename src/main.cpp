@@ -22,11 +22,15 @@
 const bool BATT_POSITIVE_IS_CHARGE = true;   // battery_power > 0 = in carica
 const bool GRID_POSITIVE_IS_IMPORT = true;   // grid_power   > 0 = prelievo dalla rete
 
-const uint32_t AUTO_PAGE_MS = 0;      // 0 = cambio pagina solo al tocco (es. 15000 = alterna ogni 15 s)
+const uint32_t AUTO_PAGE_MS = 30000;  // scorrimento automatico: ogni pagina resta 30 s (0 = solo touch)
+const uint32_t IDLE_MS      = 30000;  // lo scorrimento parte dopo 30 s senza tocchi
 const uint32_t STALE_MS     = 60000;  // dati "vecchi" dopo 60 s senza messaggi (pallino arancione)
 const char*    TZ_INFO      = "CET-1CEST,M3.5.0,M10.5.0/3";  // Europe/Rome
 const uint16_t TOUCH_MIN_Z  = 600;    // pressione minima per un tocco valido (alza se cambia ancora da solo)
 const bool     TOUCH_DEBUG  = false;  // true = stampa le letture del touch sul monitor seriale
+// Topic della tensione batteria (relativo a "solar_assistant/", senza "/state").
+// Verifica il nome esatto in MQTT Explorer: es. "battery_1/voltage" o "inverter_1/battery_voltage"
+#define BATT_V_KEY "battery_1/voltage"
 const float    GAUGE_MAX_W  = 7500;   // fondo scala del gauge fotovoltaico (pagina 3)
 
 // LED RGB sul retro: "respiro" verde in carica, rosso in scarica, spento a riposo
@@ -68,7 +72,7 @@ PubSubClient mqtt(net);
 // ----------------------- Dati MQTT -----------------------
 enum Val { PV_P, LOAD_P, GRID_P, BATT_P, SOC, BATT_T, GRID_V, GRID_F, LOAD_PCT,
            E_PV, E_LOAD, E_GIN, E_GOUT, E_BIN, E_BOUT,
-           W_CLOUD, W_TEMP, W_REMAIN, W_PRED, W_CODE, N_VALS };
+           W_CLOUD, W_TEMP, W_REMAIN, W_PRED, W_CODE, BATT_V, N_VALS };
 
 const char* KEYS[N_VALS] = {
   "total/pv_power", "total/load_power", "total/grid_power", "total/battery_power",
@@ -77,7 +81,8 @@ const char* KEYS[N_VALS] = {
   "total/pv_energy", "total/load_energy", "total/grid_energy_in", "total/grid_energy_out",
   "total/battery_energy_in", "total/battery_energy_out",
   "weather/cloud_cover", "weather/outside_temperature", "weather/pv_energy_remaining_today",
-  "weather/pv_power_predicted", "weather/weather_code"
+  "weather/pv_power_predicted", "weather/weather_code",
+  BATT_V_KEY   // tensione batteria (nei topic "total" non c'è)
 };
 
 float    val[N_VALS];
@@ -89,6 +94,7 @@ const uint8_t N_PAGES = 3;
 const char* PAGE_TITLES[N_PAGES] = {"LIVE", "OGGI E METEO", "BATTERIA E FV"};
 uint8_t  page = 0;
 uint32_t lastPageSwitch = 0;
+uint32_t lastTouchMs = 0;
 uint32_t lastWifiTry = 0;
 
 void onMqtt(char* topic, byte* payload, unsigned int len) {
@@ -241,9 +247,9 @@ void drawSocValues(int y0) {
     char n[8];
     snprintf(n, sizeof n, "%d", soc);
     if (changed(8, n, col)) {
-      tft.fillRect(8, y0 + 6, 112, 58, C_CARD);
-      text(n, 12, y0 + 12, 6, col, C_CARD, TL_DATUM, 0);
-      text("%", 12 + tft.textWidth(n, 6) + 4, y0 + 32, 4, col, C_CARD, TL_DATUM, 0);
+      tft.fillRect(8, y0 + 2, 112, 48, C_CARD);
+      text(n, 12, y0 + 2, 6, col, C_CARD, TL_DATUM, 0);
+      text("%", 12 + tft.textWidth(n, 6) + 4, y0 + 22, 4, col, C_CARD, TL_DATUM, 0);
       const int bx = 124, by = y0 + 26, bw = 184, bh = 20;
       tft.drawRoundRect(bx, by, bw, bh, 4, C_DIM);
       int fw = (bw - 4) * soc / 100;
@@ -251,9 +257,13 @@ void drawSocValues(int y0) {
       tft.fillRect(bx + 2 + fw, by + 2, bw - 4 - fw, bh - 4, C_BG);
     }
   } else if (changed(8, "--", C_DIM)) {
-    tft.fillRect(8, y0 + 6, 112, 58, C_CARD);
-    text("--", 12, y0 + 24, 4, C_DIM, C_CARD, TL_DATUM, 0);
+    tft.fillRect(8, y0 + 2, 112, 48, C_CARD);
+    text("--", 12, y0 + 14, 4, C_DIM, C_CARD, TL_DATUM, 0);
   }
+  // Tensione batteria: piccola, sotto la percentuale (stessa riga della temperatura)
+  char vb[16];
+  if (has[BATT_V]) snprintf(vb, sizeof vb, "%.1f V", val[BATT_V]); else strcpy(vb, "-- V");
+  field(10, vb, 12, y0 + 50, 2, C_DIM, C_CARD, TL_DATUM, 108);
   tempField(9, "Temp. ", has[BATT_T], val[BATT_T], 124, y0 + 50, 2, C_DIM, C_CARD, TL_DATUM, 184);
 }
 
@@ -501,6 +511,7 @@ void handleTouch() {
 
   if (validTouch()) {
     released = 0;
+    lastTouchMs = millis();   // ogni tocco valido mette in pausa lo scorrimento automatico
     if (pressed < 255) pressed++;
     if (armed && pressed >= 3 && millis() - lastSwitch > 700) {
       armed = false;
@@ -512,6 +523,53 @@ void handleTouch() {
     if (released < 255) released++;
     if (released >= 5) armed = true;
   }
+}
+
+// ----------------------- LED RGB (retro) -----------------------
+// Sul CYD il LED RGB è ad ANODO COMUNE: si accende con livello BASSO
+#define LED_R_PIN 4
+#define LED_G_PIN 16
+#define LED_B_PIN 17
+const uint8_t LED_CH[3] = {1, 2, 3};   // canali LEDC (il canale 0 resta libero)
+
+void ledWrite(uint8_t r, uint8_t g, uint8_t b) {
+  ledcWrite(LED_CH[0], 255 - r);       // logica invertita (attivo basso)
+  ledcWrite(LED_CH[1], 255 - g);
+  ledcWrite(LED_CH[2], 255 - b);
+}
+
+void ledSetup() {
+  const uint8_t pins[3] = {LED_R_PIN, LED_G_PIN, LED_B_PIN};
+  for (int i = 0; i < 3; i++) {
+    ledcSetup(LED_CH[i], 5000, 8);
+    ledcAttachPin(pins[i], LED_CH[i]);
+  }
+  ledWrite(0, 0, 0);
+}
+
+void updateLed() {
+  static uint32_t last = 0, phaseMs = 0;
+  uint32_t now = millis();
+  uint32_t dt = now - last;
+  if (dt < 20) return;
+  last = now;
+
+  bool fresh = mqtt.connected() && has[BATT_P] && now - lastMsgMs < STALE_MS;
+  float p = fresh ? val[BATT_P] : 0;
+  if (!LED_ENABLED || !fresh || fabsf(p) < LED_IDLE_W) { ledWrite(0, 0, 0); phaseMs = 0; return; }
+
+  bool charging = BATT_POSITIVE_IS_CHARGE ? p > 0 : p < 0;
+
+  // Più potenza = respiro più veloce
+  float k = constrain(fabsf(p) / LED_FULL_POWER_W, 0.0f, 1.0f);
+  float period = LED_PERIOD_SLOW - k * (LED_PERIOD_SLOW - LED_PERIOD_FAST);
+  phaseMs += dt;
+  float x = fmodf(phaseMs, period) / period;               // 0..1
+  float sv = 0.5f - 0.5f * cosf(2.0f * PI * x);            // onda morbida 0..1
+  uint8_t v = (uint8_t)(LED_MAX * (0.03f + 0.97f * sv * sv)); // correzione gamma, minimo appena acceso
+
+  if (charging) ledWrite(0, v, 0);
+  else          ledWrite(v, 0, 0);
 }
 
 // ----------------------- Connessioni -----------------------
@@ -533,6 +591,7 @@ void ensureConnections() {
     if (ok) {
       mqtt.subscribe("solar_assistant/total/+/state");
       mqtt.subscribe("solar_assistant/weather/+/state");
+      mqtt.subscribe("solar_assistant/" BATT_V_KEY "/state");
       mqtt.subscribe("solar_assistant/status");
     }
   }
@@ -549,6 +608,8 @@ void setup() {
   pinMode(TFT_BL, OUTPUT);
   digitalWrite(TFT_BL, TFT_BACKLIGHT_ON);
 #endif
+
+  ledSetup();
 
   touchSPI.begin(XPT2046_CLK, XPT2046_MISO, XPT2046_MOSI, XPT2046_CS);
   ts.begin(touchSPI);
@@ -577,8 +638,11 @@ void loop() {
   ensureConnections();
   mqtt.loop();
   handleTouch();
+  updateLed();
 
-  if (AUTO_PAGE_MS && millis() - lastPageSwitch > AUTO_PAGE_MS) switchPage();
+  // Scorrimento automatico solo dopo IDLE_MS senza tocchi
+  if (AUTO_PAGE_MS && millis() - lastTouchMs > IDLE_MS &&
+      millis() - lastPageSwitch > AUTO_PAGE_MS) switchPage();
 
   static uint32_t lastDraw = 0;
   if (millis() - lastDraw > 500) {
